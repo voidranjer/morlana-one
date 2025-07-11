@@ -1,3 +1,6 @@
+import { Page } from "@playwright/test";
+import path from "path";
+
 export function generateTimestampFilename() {
   const now = new Date();
 
@@ -13,3 +16,9 @@ export function generateTimestampFilename() {
   return `${day}-${month}-${year}-${hours}${minutes}-${seconds}`;
 }
 
+
+// Store session (cookies and local storage) to a file for later use.
+export async function storeSession(page: Page) {
+  const authFile = path.join(__dirname, "../../playwright/.auth/user.json");
+  await page.context().storageState({ path: authFile });
+}
