@@ -1,11 +1,11 @@
 import { expect } from "@playwright/test";
-import fs from "fs";
-import path from "path";
 
 import { undetectedTest } from "./fixtures";
-import { generateTimestampFilename, storeSession } from "./lib/utils";
-import { CategoryName, RogersActivitiesResponse, TransactionPayload } from "./lib/firefly/types";
-import { postTransactions } from "./lib/firefly/utils";
+import { logToFile, parseDate, storeSession } from "./lib/utils";
+import { CategoryName, TransactionPayload } from "./lib/firefly/types";
+import { ApiResponse as RogersResponse } from "./lib/rogers/types";
+import { ApiResponse as ScotiaResponse } from "./lib/scotiabank/types";
+import { postTransactions } from "./lib/firefly";
 
 
 undetectedTest("rogers bank", async ({ page, request }) => {
@@ -35,16 +35,12 @@ undetectedTest("rogers bank", async ({ page, request }) => {
 
       if (match) {
         expect(response.ok()).toBeTruthy();
-        console.log(`Received transactions for period: ${match[1]}`);
+        const body: RogersResponse = await response.json();
 
-        const body: RogersActivitiesResponse = await response.json();
+        console.log(`Received ${body.activities.length} transactions for period: ${match[1]}`);
 
         // Log response body from bank to a file
-        const outputDir = path.join(__dirname, 'logs');
-        const outputFilename = `${outputDir}/${generateTimestampFilename()}.json`
-        await fs.promises.mkdir(outputDir, { recursive: true });
-        await fs.promises.writeFile(outputFilename, JSON.stringify(body, null, 2));
-        console.log(`Wrote ${body.activities.length} transactions to ${outputFilename}`);
+        await logToFile(body);
 
         // Post transactions to Firefly
         const transactions: TransactionPayload[] = body.activities
@@ -59,7 +55,7 @@ undetectedTest("rogers bank", async ({ page, request }) => {
               notes: a.merchant.categoryDescription,
               category_name: a.merchant.category as CategoryName,
               amount,
-              date: a.date.replace(/(\d{4})-(\d{2})-(\d{2})/, '$1-$2-$3T00:00:00Z'),
+              date: parseDate(a.date),
               external_id: a.referenceNumber,
               source_name: isPayment ? undefined : process.env.ROGERS_FIREFLY_ACCOUNT_NAME,
               destination_name: isPayment ? process.env.ROGERS_FIREFLY_ACCOUNT_NAME : undefined
@@ -122,42 +118,45 @@ undetectedTest("scotiabank", async ({ page, request }) => {
 
       if (match) {
         expect(response.ok()).toBeTruthy();
+        const body: ScotiaResponse = await response.json();
 
-        console.log(`Received transactions for: ${match[1]} to ${match[2]}`);
+        console.log(`Received ${body.data.length} transactions for: ${match[1]} to ${match[2]}`);
 
-        // const body: RogersActivitiesResponse = await response.json();
-        //
-        // // Log response body from bank to a file
-        // const outputDir = path.join(__dirname, 'logs');
-        // const outputFilename = `${outputDir}/${generateTimestampFilename()}.json`
-        // await fs.promises.mkdir(outputDir, { recursive: true });
-        // await fs.promises.writeFile(outputFilename, JSON.stringify(body, null, 2));
-        // console.log(`Wrote ${body.activities.length} transactions to ${outputFilename}`);
-        //
-        // // Post transactions to Firefly
-        // const transactions: TransactionPayload[] = body.activities
-        //   .filter(a => a.activityStatus === "APPROVED")
-        //   .map(a => {
-        //     const isPayment = parseFloat(a.amount.value) < 0;
-        //     const amount = Math.abs(parseFloat(a.amount.value));
-        //
-        //     const payload: TransactionPayload = {
-        //       type: isPayment ? "deposit" : "withdrawal",
-        //       description: a.merchant.name,
-        //       notes: a.merchant.categoryDescription,
-        //       category_name: a.merchant.category as CategoryName,
-        //       date: a.date.replace(/(\d{4})-(\d{2})-(\d{2})/, '$1-$2-$3T00:00:00Z'),
-        //       external_id: a.referenceNumber,
-        //       // TODO: this shouldn't be hardcoded
-        //       source_name: isPayment ? undefined : "Rogers Red Mastercard",
-        //       destination_name: isPayment ? "Rogers Red Mastercard" : undefined
-        //     }
-        //
-        //     return payload;
-        //
-        //   });
-        //
-        // await postTransactions(request, transactions);
+        // Log response body from bank to a file
+        await logToFile(body);
+
+        // Post transactions to Firefly
+        const transactions: TransactionPayload[] = body.data
+          .map(t => {
+            const isWithdrawal = t.transactionType === "DEBIT"
+            const type = isWithdrawal ? "withdrawal" : "deposit";
+            const amount = t.transactionAmount.amount;
+            const description = t.cleanDescription;
+            const notes = t.userInputTag;
+            const category_name = t.category.description as CategoryName;
+            const date = parseDate(t.transactionDate);
+            const external_id = t.key;
+            const source_name = isWithdrawal ? process.env.CHEQUING_FIREFLY_ACCOUNT_NAME : undefined;
+            const destination_name = isWithdrawal ? undefined : process.env.CHEQUING_FIREFLY_ACCOUNT_NAME;
+
+
+            const payload: TransactionPayload = {
+              type,
+              description,
+              notes,
+              category_name,
+              amount,
+              date,
+              external_id,
+              source_name,
+              destination_name
+            }
+
+            return payload;
+
+          });
+
+        await postTransactions(request, transactions);
 
         resolved = true;
         resolve(); // ✅ ends the promise, test will continue

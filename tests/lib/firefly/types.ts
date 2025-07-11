@@ -25,46 +25,13 @@ export type TransactionPayload = {
   amount: number;
   date: string;
   external_id: string;
-  notes?: string;
-  source_name?: string;
-  destination_name?: string;
+  notes?: string | null;
+  source_name?: string | null;
+  destination_name?: string | null;
 };
 
-export type RogersActivitiesResponse = {
-  activities: {
-    referenceNumber: string,
-    activityType: string,
-    amount: {
-      value: string,
-      currency: "CAD" | string
-    },
-    activityStatus: "APPROVED" | string,
-    activityCategory: "PURCHASE" | "PAYMENT",
-    activityClassification: "PURCHASE" | "PAYMENT",
-    cardNumber: string,
-    merchant: {
-      name: string,
-      categoryCode: number,
-      categoryDescription: string, // TODO: map this to "Notes" in firefly
-      category: string, // TODO: replace this with a known list of mapped categories
-      address: {
-        city: string,
-        stateProvince: string,
-        postalCode: string,
-        countryCode: string
-      }
-    },
-    date: string,
-    activityCategoryCode: string,
-    customerId: string,
-    postedDate: string,
-    name: {
-      nameOnCard: string
-    }
-  }[]
-}
 
-export type FireflyTransaction = {
+export type Transaction = {
   user: string;
   transaction_journal_id: string;
   type: 'withdrawal' | 'deposit' | string;
