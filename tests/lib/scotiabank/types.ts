@@ -73,7 +73,15 @@ export type Transaction = {
   descriptionLine2: string | null;
 }
 
-export type ApiResponse = {
+export type ChequingApiResponse = {
   data: Transaction[];
-  notifications: any;
+  notifications: unknown;
 }
+
+export type ScenePlusApiResponse = {
+  data: {
+    pending: unknown[];
+    settled: Transaction[];
+  }
+  notifcations: unknown;
+};
